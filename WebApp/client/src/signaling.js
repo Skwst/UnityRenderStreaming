@@ -133,7 +133,12 @@ export class Signaling extends EventTarget {
 
 export class WebSocketSignaling extends EventTarget {
 
-  constructor(interval = 1000) {
+  /**
+   * @param {number} interval
+   * @param {string | null} room signaling room to join. Clients of different rooms never
+   * see each other, so one server can host several Unity apps. Null joins the default room.
+   */
+  constructor(interval = 1000, room = null) {
     super();
     this.interval = interval;
     this.sleep = msec => new Promise(resolve => setTimeout(resolve, msec));
@@ -143,6 +148,9 @@ export class WebSocketSignaling extends EventTarget {
       websocketUrl = "wss://" + location.host;
     } else {
       websocketUrl = "ws://" + location.host;
+    }
+    if (room) {
+      websocketUrl += "/?room=" + encodeURIComponent(room);
     }
 
     this.websocket = new WebSocket(websocketUrl);
