@@ -27,18 +27,27 @@ namespace Unity.RenderStreaming
         /// </summary>
         public string url => m_url;
 
+        /// <summary>
+        /// Shared-secret token required by the signaling server, if any.
+        /// </summary>
+        public string authToken => m_authToken;
+
         [SerializeField, Tooltip("Set the signaling server URL. you should specify a URL starting with \"ws\" or \"wss\".")]
         protected string m_url;
 
         [SerializeField, Tooltip("Set a list of STUN/TURN servers.")]
         protected IceServer[] m_iceServers;
 
+        [SerializeField, Tooltip("Set the token required by the signaling server, if it needs authentication.")]
+        protected string m_authToken;
+
         /// <summary>
-        /// 
+        ///
         /// </summary>
         /// <param name="url"></param>
         /// <param name="iceServers"></param>
-        public WebSocketSignalingSettings(string url, IceServer[] iceServers = null)
+        /// <param name="authToken">Shared-secret token required by the signaling server, if any.</param>
+        public WebSocketSignalingSettings(string url, IceServer[] iceServers = null, string authToken = null)
         {
             if (url == null)
                 throw new ArgumentNullException("url");
@@ -47,6 +56,7 @@ namespace Unity.RenderStreaming
 
             m_url = url;
             m_iceServers = iceServers == null ? Array.Empty<IceServer>() : iceServers.Select(server => server.Clone()).ToArray();
+            m_authToken = authToken;
         }
 
         /// <summary>
@@ -111,6 +121,8 @@ namespace Unity.RenderStreaming
                         credentialType: credentialType.GetValueOrDefault(),
                         urls: urls)
                     };
+            if (CommandLineParser.AuthToken.Value != null)
+                m_authToken = CommandLineParser.AuthToken.Value;
             return true;
         }
     }

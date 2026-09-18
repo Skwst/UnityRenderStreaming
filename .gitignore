@@ -261,6 +261,10 @@ FakesAssemblies/
 .ntvs_analysis.dat
 node_modules/
 
+# Local environment overrides (may contain secrets such as AUTHTOKEN)
+.env
+.env.local
+
 # Visual Studio 6 build log
 *.plg
 

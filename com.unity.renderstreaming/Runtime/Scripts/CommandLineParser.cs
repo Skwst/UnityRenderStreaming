@@ -26,9 +26,10 @@ namespace Unity.RenderStreaming
         internal static readonly StringArgument IceServerCredential = new StringArgument("-iceServerCredential");
         internal static readonly EnumArgument<IceCredentialType> IceServerCredentialType = new EnumArgument<IceCredentialType>("-iceServerCredentialType");
         internal static readonly IntArgument PollingInterval = new IntArgument("-pollingInterval");
+        internal static readonly StringArgument AuthToken = new StringArgument("-authToken");
         internal static readonly JsonFileArgument<CommandLineInfo> ImportJson = new JsonFileArgument<CommandLineInfo>("-importJson");
 
-        static readonly List<IArgument> options = new List<IArgument>() { SignalingUrl, SignalingType, IceServerUrls, IceServerUsername, IceServerCredential, IceServerCredentialType, PollingInterval, ImportJson };
+        static readonly List<IArgument> options = new List<IArgument>() { SignalingUrl, SignalingType, IceServerUrls, IceServerUsername, IceServerCredential, IceServerCredentialType, PollingInterval, AuthToken, ImportJson };
 
         internal delegate bool TryParseDelegate<T>(string[] arguments, string argumentName, out T result);
 

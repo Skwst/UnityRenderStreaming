@@ -16,6 +16,7 @@ namespace Unity.RenderStreaming.Signaling
 
         private readonly string m_url;
         private readonly float m_timeout;
+        private readonly string m_authToken;
         private readonly SynchronizationContext m_mainThreadContext;
         private bool m_running;
         private Thread m_signalingThread;
@@ -32,6 +33,7 @@ namespace Unity.RenderStreaming.Signaling
                 throw new ArgumentException("signalingSettings is not WebSocketSignalingSettings");
             m_url = settings.url;
             m_timeout = 5.0f;
+            m_authToken = settings.authToken;
             m_mainThreadContext = mainThreadContext;
             m_wsCloseEvent = new AutoResetEvent(false);
 
@@ -170,7 +172,16 @@ namespace Unity.RenderStreaming.Signaling
 
         private void WSCreate()
         {
-            m_webSocket = new WebSocket(m_url);
+            // Browsers can't set custom headers on a WebSocket handshake, so the token travels in
+            // the query string here to match the server-side check (unlike HTTP signaling, which
+            // uses an Authorization header).
+            var url = m_url;
+            if (!string.IsNullOrEmpty(m_authToken))
+            {
+                url += (url.Contains("?") ? "&" : "?") + "token=" + Uri.EscapeDataString(m_authToken);
+            }
+
+            m_webSocket = new WebSocket(url);
             if (m_url.StartsWith("wss"))
             {
                 m_webSocket.SslConfiguration.EnabledSslProtocols =

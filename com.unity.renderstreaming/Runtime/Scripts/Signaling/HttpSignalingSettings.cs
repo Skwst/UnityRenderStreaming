@@ -29,12 +29,19 @@ namespace Unity.RenderStreaming
         /// </summary>
         public int interval => m_interval;
 
+        /// <summary>
+        /// Shared-secret token required by the signaling server, if any.
+        /// </summary>
+        public string authToken => m_authToken;
+
         [SerializeField, Tooltip("Set the polling frequency (in milliseconds) to the signaling server.")]
         private int m_interval;
         [SerializeField, Tooltip("Set the signaling server URL. you should specify a URL starting with \"http\" or \"https\".")]
         protected string m_url;
         [SerializeField, Tooltip("Set a list of STUN/TURN servers.")]
         protected IceServer[] m_iceServers;
+        [SerializeField, Tooltip("Set the token required by the signaling server, if it needs authentication.")]
+        protected string m_authToken;
 
         /// <summary>
         /// 
@@ -42,7 +49,8 @@ namespace Unity.RenderStreaming
         /// <param name="url"></param>
         /// <param name="iceServers"></param>
         /// <param name="interval"></param>
-        public HttpSignalingSettings(string url, IceServer[] iceServers = null, int interval = 5000)
+        /// <param name="authToken">Shared-secret token required by the signaling server, if any.</param>
+        public HttpSignalingSettings(string url, IceServer[] iceServers = null, int interval = 5000, string authToken = null)
         {
             if (url == null)
                 throw new ArgumentNullException("url");
@@ -52,6 +60,7 @@ namespace Unity.RenderStreaming
             m_url = url;
             m_iceServers = iceServers == null ? Array.Empty<IceServer>() : iceServers.Select(server => server.Clone()).ToArray();
             m_interval = interval;
+            m_authToken = authToken;
         }
 
         /// <summary>
@@ -124,6 +133,8 @@ namespace Unity.RenderStreaming
 
             if (CommandLineParser.PollingInterval.Value != null)
                 m_interval = CommandLineParser.PollingInterval.Value.Value;
+            if (CommandLineParser.AuthToken.Value != null)
+                m_authToken = CommandLineParser.AuthToken.Value;
             return true;
         }
     }

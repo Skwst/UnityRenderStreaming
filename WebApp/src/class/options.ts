@@ -6,4 +6,5 @@ export default interface Options {
   type?: string;
   mode?: string;
   logging?: string;
+  authtoken?: string;
 }

@@ -15,6 +15,7 @@ namespace Unity.RenderStreaming.Signaling
 
         private readonly string m_url;
         private readonly int m_timeout;
+        private readonly string m_authToken;
         private readonly SynchronizationContext m_mainThreadContext;
         private bool m_running;
         private Thread m_signalingThread;
@@ -32,6 +33,7 @@ namespace Unity.RenderStreaming.Signaling
                 throw new ArgumentException("signalingSettings is not HttpSignalingSettings");
             m_url = settings.url;
             m_timeout = settings.interval;
+            m_authToken = settings.authToken;
             m_mainThreadContext = mainThreadContext;
 
             if (m_url.StartsWith("https"))
@@ -242,6 +244,14 @@ namespace Unity.RenderStreaming.Signaling
         }
 
 
+        private void AddAuthHeader(HttpWebRequest request)
+        {
+            if (!string.IsNullOrEmpty(m_authToken))
+            {
+                request.Headers.Add("Authorization", "Bearer " + m_authToken);
+            }
+        }
+
         private bool HTTPCreate()
         {
             HttpWebRequest request = (HttpWebRequest)WebRequest.Create($"{m_url}/signaling");
@@ -249,6 +259,7 @@ namespace Unity.RenderStreaming.Signaling
             request.ContentType = "application/json";
             request.KeepAlive = false;
             request.ContentLength = 0;
+            AddAuthHeader(request);
 
             RenderStreaming.Logger.Log($"Signaling: Connecting HTTP {m_url}");
 
@@ -275,6 +286,7 @@ namespace Unity.RenderStreaming.Signaling
             request.ContentType = "application/json";
             request.KeepAlive = false;
             request.Headers.Add("Session-Id", m_sessionId);
+            AddAuthHeader(request);
 
             RenderStreaming.Logger.Log($"Signaling: Removing HTTP connection from {m_url}");
 
@@ -293,6 +305,7 @@ namespace Unity.RenderStreaming.Signaling
             request.ContentType = "application/json";
             request.Headers.Add("Session-Id", m_sessionId);
             request.KeepAlive = false;
+            AddAuthHeader(request);
 
             using (Stream dataStream = request.GetRequestStream())
             {
@@ -311,6 +324,7 @@ namespace Unity.RenderStreaming.Signaling
             request.ContentType = "application/json";
             request.Headers.Add("Session-Id", m_sessionId);
             request.KeepAlive = false;
+            AddAuthHeader(request);
 
             using (Stream dataStream = request.GetRequestStream())
             {
@@ -337,6 +351,7 @@ namespace Unity.RenderStreaming.Signaling
             request.ContentType = "application/json";
             request.Headers.Add("Session-Id", m_sessionId);
             request.KeepAlive = false;
+            AddAuthHeader(request);
 
             using (Stream dataStream = request.GetRequestStream())
             {
@@ -362,6 +377,7 @@ namespace Unity.RenderStreaming.Signaling
             request.ContentType = "application/json";
             request.Headers.Add("Session-Id", m_sessionId);
             request.KeepAlive = false;
+            AddAuthHeader(request);
 
             HttpWebResponse response = HTTPGetResponse(request);
             AllResData data = HTTPParseJsonResponse<AllResData>(response);

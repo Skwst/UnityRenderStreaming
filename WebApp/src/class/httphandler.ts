@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import Offer from './offer';
 import Answer from './answer';
 import Candidate from './candidate';
+import { sdpDeclaresSend } from './sdp';
 import { v4 as uuid } from 'uuid';
 
 class Disconnection {
@@ -16,6 +17,10 @@ class Disconnection {
 const TimeoutRequestedTime = 10000; // 10sec
 
 let isPrivate: boolean;
+
+// Shared-secret token required to send media (an offer/answer whose SDP declares the sender an
+// audio/video source - see sdp.ts). Unset means no authentication is required.
+let authToken: string | undefined;
 
 // [{sessonId:[connectionId,...]}]
 const clients: Map<string, Set<string>> = new Map<string, Set<string>>();
@@ -48,8 +53,9 @@ function getOrCreateConnectionIds(sessionId: string): Set<string> {
   return connectionIds;
 }
 
-function reset(mode: string): void {
+function reset(mode: string, token?: string): void {
   isPrivate = mode == "private";
+  authToken = token;
   clients.clear();
   connectionPair.clear();
   offers.clear();
@@ -321,7 +327,26 @@ function deleteConnection(req: Request, res: Response): void {
   res.json({ connectionId: connectionId });
 }
 
+// True (and already responded 401) if this request's SDP declares its sender a media source
+// (sdp.ts) and the caller didn't present the configured token. A recvonly/audio-less SDP, or no
+// token configured at all, is never rejected here - see websocket.ts for the full reasoning on
+// why offer/answer message type alone can't stand in for "listener" vs "streamer".
+function rejectsUnauthenticatedSend(req: Request, res: Response): boolean {
+  if (!authToken || !sdpDeclaresSend(req.body.sdp)) {
+    return false;
+  }
+  if (req.header('Authorization') !== `Bearer ${authToken}`) {
+    res.sendStatus(401);
+    return true;
+  }
+  return false;
+}
+
 function postOffer(req: Request, res: Response): void {
+  if (rejectsUnauthenticatedSend(req, res)) {
+    return;
+  }
+
   const sessionId: string = req.header('session-id');
   const { connectionId } = req.body;
   const datetime = lastRequestedTime.get(sessionId);
@@ -355,6 +380,10 @@ function postOffer(req: Request, res: Response): void {
 }
 
 function postAnswer(req: Request, res: Response): void {
+  if (rejectsUnauthenticatedSend(req, res)) {
+    return;
+  }
+
   const sessionId: string = req.header('session-id');
   const { connectionId } = req.body;
   const datetime = lastRequestedTime.get(sessionId);

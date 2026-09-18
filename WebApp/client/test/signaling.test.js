@@ -482,3 +482,140 @@ describe.each([
     await waitFor(() => disconnectRes2 != null);
   });
 });
+
+// A signaling peer can't be reliably split into "listener" vs "streamer" by message type -
+// renegotiation means either side can end up offering or answering depending on who triggers it
+// (see websocket.ts/httphandler.ts for the full reasoning). What's actually gated is whether a
+// given offer/answer's SDP *declares its sender a media source* (sdpDeclaresSend: any audio/video
+// m-line that isn't recvonly/inactive) - true regardless of message type, false for e.g. a
+// listener's recvonly answer or its initial audio-less offer. A wrong token still gets the whole
+// connection rejected; a missing token is always allowed to connect and exchange recvonly
+// SDP, but rejected specifically on any SDP that would make it a sender.
+describe.each([
+  { mode: "http" },
+  { mode: "websocket" },
+])('signaling test with an auth token required', ({ mode }) => {
+  const authToken = "testsecret";
+  const connectionId1 = "auth-test-connection-1";
+
+  const sdpWithAudio = (direction) =>
+    'v=0\r\n' +
+    'o=- 1 1 IN IP4 127.0.0.1\r\n' +
+    's=-\r\n' +
+    't=0 0\r\n' +
+    'm=audio 9 UDP/TLS/RTP/SAVPF 96\r\n' +
+    'c=IN IP4 0.0.0.0\r\n' +
+    `a=${direction}\r\n` +
+    'a=rtpmap:96 opus/48000/2\r\n';
+
+  beforeAll(async () => {
+    const path = Path.resolve(`../bin~/${serverExeName()}`);
+    let cmd = `${path} -p ${portNumber} -a ${authToken}`;
+    if (mode == "http") {
+      cmd += " -t http";
+    }
+    await setup({ command: cmd, port: portNumber, usedPortAction: 'error' });
+  });
+
+  afterAll(async () => {
+    await teardown();
+    // work around for linux, waitng kill server process
+    await sleep(1000);
+  });
+
+  if (mode == "http") {
+    test('rejects a wrong token at the connection level', async () => {
+      const res = await fetch(`http://127.0.0.1:${portNumber}/signaling`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer wrong' },
+      });
+      expect(res.status).toBe(401);
+    });
+
+    test('a recvonly (listening) offer never needs a token, but a sendonly one does', async () => {
+      const createRes = await fetch(`http://127.0.0.1:${portNumber}/signaling`, { method: 'PUT', headers: { 'Content-Type': 'application/json' } });
+      const { sessionId } = await createRes.json();
+      const post = (sdp, headers = {}) => fetch(`http://127.0.0.1:${portNumber}/signaling/offer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Session-Id': sessionId, ...headers },
+        body: JSON.stringify({ sdp, connectionId: connectionId1 }),
+      });
+
+      expect((await post(sdpWithAudio('recvonly'))).status).toBe(200);
+      expect((await post(sdpWithAudio('sendonly'))).status).toBe(401);
+      expect((await post(sdpWithAudio('sendonly'), { Authorization: `Bearer ${authToken}` })).status).toBe(200);
+
+      await fetch(`http://127.0.0.1:${portNumber}/signaling`, { method: 'DELETE', headers: { 'Content-Type': 'application/json', 'Session-Id': sessionId } });
+    });
+  }
+
+  if (mode == "websocket") {
+    test('rejects a wrong token at the connection level (websocket)', async () => {
+      const ws = new WebSocket(`ws://127.0.0.1:${portNumber}/?token=wrong`);
+      let opened = false;
+      let rejectedStatus;
+      ws.onopen = () => { opened = true; };
+      ws.onclose = (event) => { rejectedStatus = event.code; };
+      await waitFor(() => opened || rejectedStatus != null);
+      expect(opened).toBe(false);
+    });
+
+    test('a peer with no token can send recvonly SDP but not sendonly', async () => {
+      const ws = new WebSocket(`ws://127.0.0.1:${portNumber}`);
+      let lastError;
+      ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'error') {
+          lastError = msg;
+        }
+      };
+      await waitFor(() => ws.readyState === WebSocket.OPEN);
+
+      ws.send(JSON.stringify({ type: 'offer', connectionId: connectionId1, data: { sdp: sdpWithAudio('sendonly'), connectionId: connectionId1 } }));
+      await waitFor(() => lastError != null);
+      expect(lastError.message).toMatch(/token/);
+
+      lastError = null;
+      ws.send(JSON.stringify({ type: 'offer', connectionId: connectionId1, data: { sdp: sdpWithAudio('recvonly'), connectionId: connectionId1 } }));
+      await sleep(200);
+      expect(lastError).toBeNull();
+
+      ws.close();
+    });
+
+    // This is the actual bug this whole redesign fixes: AudioStreamSender rebinding makes Unity
+    // renegotiate - Unity (authenticated) sends the offer, and the listener (no token) must be
+    // able to answer it. Gating by message type broke exactly this.
+    test("Unity's authenticated sendonly offer gets a valid answer from an unauthenticated listener", async () => {
+      const unity = new WebSocket(`ws://127.0.0.1:${portNumber}/?token=${authToken}`);
+      let unityGotAnswer;
+      unity.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'answer') {
+          unityGotAnswer = msg;
+        }
+      };
+      await waitFor(() => unity.readyState === WebSocket.OPEN);
+
+      const listener = new WebSocket(`ws://127.0.0.1:${portNumber}`);
+      let listenerGotOffer;
+      listener.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'offer') {
+          listenerGotOffer = msg;
+        }
+      };
+      await waitFor(() => listener.readyState === WebSocket.OPEN);
+
+      unity.send(JSON.stringify({ type: 'offer', connectionId: connectionId1, data: { sdp: sdpWithAudio('sendonly'), connectionId: connectionId1 } }));
+      await waitFor(() => listenerGotOffer != null);
+
+      listener.send(JSON.stringify({ type: 'answer', from: connectionId1, data: { sdp: sdpWithAudio('recvonly'), connectionId: connectionId1 } }));
+      await waitFor(() => unityGotAnswer != null);
+      expect(unityGotAnswer.data.sdp).toBe(sdpWithAudio('recvonly'));
+
+      unity.close();
+      listener.close();
+    });
+  }
+});

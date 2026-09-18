@@ -9,6 +9,11 @@ import { AddressInfo } from 'net';
 import WSSignaling from './websocket';
 import Options from './class/options';
 
+// Loads variables from a .env file in the current working directory into process.env
+// (e.g. AUTHTOKEN=...), so options that default from env vars below don't need to be
+// passed on the command line every time. A no-op when no .env file is present.
+require('dotenv').config();
+
 export class RenderStreaming {
   public static run(argv: string[]): RenderStreaming {
     const program = new Command();
@@ -23,6 +28,7 @@ export class RenderStreaming {
           .option('-t, --type <type>', 'Type of signaling protocol, Choose websocket or http.', process.env.TYPE || 'websocket')
           .option('-m, --mode <type>', 'Choose Communication mode public or private.', process.env.MODE || 'public')
           .option('-l, --logging <type>', 'Choose http logging type combined, dev, short, tiny or none.', process.env.LOGGING || 'dev')
+          .option('-a, --authtoken <token>', 'Require this token to use the signaling server. Unset by default (no authentication).', process.env.AUTHTOKEN)
           .parse(argv);
         const option = program.opts();
         return {
@@ -33,6 +39,7 @@ export class RenderStreaming {
           type: option.type == undefined ? 'websocket' : option.type,
           mode: option.mode,
           logging: option.logging,
+          authtoken: option.authtoken,
         };
       }
     };
@@ -81,7 +88,7 @@ export class RenderStreaming {
       console.log(`Use websocket for signaling server ws://${this.getIPAddress()[0]}`);
 
       //Start Websocket Signaling server
-      new WSSignaling(this.server, this.options.mode);
+      new WSSignaling(this.server, this.options.mode, this.options.authtoken);
     }
 
     console.log(`start as ${this.options.mode} mode`);

@@ -124,6 +124,7 @@ namespace Unity.RenderStreaming.Editor
             root.Add(new PropertyField(property.FindPropertyRelative("m_url"), "URL"));
             root.Add(new PropertyField(property.FindPropertyRelative("m_interval"), "Polling Interval (msec)"));
             root.Add(new PropertyField(property.FindPropertyRelative("m_iceServers"), "ICE Servers"));
+            root.Add(new PropertyField(property.FindPropertyRelative("m_authToken"), "Auth Token"));
             return root;
         }
     }
@@ -136,6 +137,7 @@ namespace Unity.RenderStreaming.Editor
             VisualElement root = new VisualElement();
             root.Add(new PropertyField(property.FindPropertyRelative("m_url"), "URL"));
             root.Add(new PropertyField(property.FindPropertyRelative("m_iceServers"), "ICE Servers"));
+            root.Add(new PropertyField(property.FindPropertyRelative("m_authToken"), "Auth Token"));
             return root;
         }
     }
