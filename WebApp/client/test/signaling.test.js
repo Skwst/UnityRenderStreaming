@@ -491,9 +491,10 @@ describe.each([
 // listener's recvonly answer or its initial audio-less offer. A wrong token still gets the whole
 // connection rejected; a missing token is always allowed to connect and exchange recvonly
 // SDP, but rejected specifically on any SDP that would make it a sender.
+// The websocket side of this is covered in WebApp/test/websocketauth.test.ts instead: the token
+// travels in the handshake's Authorization header, which jsdom's WebSocket here can't send.
 describe.each([
   { mode: "http" },
-  { mode: "websocket" },
 ])('signaling test with an auth token required', ({ mode }) => {
   const authToken = "testsecret";
   const connectionId1 = "auth-test-connection-1";
@@ -546,76 +547,6 @@ describe.each([
       expect((await post(sdpWithAudio('sendonly'), { Authorization: `Bearer ${authToken}` })).status).toBe(200);
 
       await fetch(`http://127.0.0.1:${portNumber}/signaling`, { method: 'DELETE', headers: { 'Content-Type': 'application/json', 'Session-Id': sessionId } });
-    });
-  }
-
-  if (mode == "websocket") {
-    test('rejects a wrong token at the connection level (websocket)', async () => {
-      const ws = new WebSocket(`ws://127.0.0.1:${portNumber}/?token=wrong`);
-      let opened = false;
-      let rejectedStatus;
-      ws.onopen = () => { opened = true; };
-      ws.onclose = (event) => { rejectedStatus = event.code; };
-      await waitFor(() => opened || rejectedStatus != null);
-      expect(opened).toBe(false);
-    });
-
-    test('a peer with no token can send recvonly SDP but not sendonly', async () => {
-      const ws = new WebSocket(`ws://127.0.0.1:${portNumber}`);
-      let lastError;
-      ws.onmessage = (event) => {
-        const msg = JSON.parse(event.data);
-        if (msg.type === 'error') {
-          lastError = msg;
-        }
-      };
-      await waitFor(() => ws.readyState === WebSocket.OPEN);
-
-      ws.send(JSON.stringify({ type: 'offer', connectionId: connectionId1, data: { sdp: sdpWithAudio('sendonly'), connectionId: connectionId1 } }));
-      await waitFor(() => lastError != null);
-      expect(lastError.message).toMatch(/token/);
-
-      lastError = null;
-      ws.send(JSON.stringify({ type: 'offer', connectionId: connectionId1, data: { sdp: sdpWithAudio('recvonly'), connectionId: connectionId1 } }));
-      await sleep(200);
-      expect(lastError).toBeNull();
-
-      ws.close();
-    });
-
-    // This is the actual bug this whole redesign fixes: AudioStreamSender rebinding makes Unity
-    // renegotiate - Unity (authenticated) sends the offer, and the listener (no token) must be
-    // able to answer it. Gating by message type broke exactly this.
-    test("Unity's authenticated sendonly offer gets a valid answer from an unauthenticated listener", async () => {
-      const unity = new WebSocket(`ws://127.0.0.1:${portNumber}/?token=${authToken}`);
-      let unityGotAnswer;
-      unity.onmessage = (event) => {
-        const msg = JSON.parse(event.data);
-        if (msg.type === 'answer') {
-          unityGotAnswer = msg;
-        }
-      };
-      await waitFor(() => unity.readyState === WebSocket.OPEN);
-
-      const listener = new WebSocket(`ws://127.0.0.1:${portNumber}`);
-      let listenerGotOffer;
-      listener.onmessage = (event) => {
-        const msg = JSON.parse(event.data);
-        if (msg.type === 'offer') {
-          listenerGotOffer = msg;
-        }
-      };
-      await waitFor(() => listener.readyState === WebSocket.OPEN);
-
-      unity.send(JSON.stringify({ type: 'offer', connectionId: connectionId1, data: { sdp: sdpWithAudio('sendonly'), connectionId: connectionId1 } }));
-      await waitFor(() => listenerGotOffer != null);
-
-      listener.send(JSON.stringify({ type: 'answer', from: connectionId1, data: { sdp: sdpWithAudio('recvonly'), connectionId: connectionId1 } }));
-      await waitFor(() => unityGotAnswer != null);
-      expect(unityGotAnswer.data.sdp).toBe(sdpWithAudio('recvonly'));
-
-      unity.close();
-      listener.close();
     });
   }
 });

@@ -172,20 +172,19 @@ namespace Unity.RenderStreaming.Signaling
 
         private void WSCreate()
         {
-            // Browsers can't set custom headers on a WebSocket handshake, so the token travels in
-            // the query string here to match the server-side check (unlike HTTP signaling, which
-            // uses an Authorization header).
-            var url = m_url;
-            if (!string.IsNullOrEmpty(m_authToken))
-            {
-                url += (url.Contains("?") ? "&" : "?") + "token=" + Uri.EscapeDataString(m_authToken);
-            }
-
-            m_webSocket = new WebSocket(url);
+            m_webSocket = new WebSocket(m_url);
             if (m_url.StartsWith("wss"))
             {
                 m_webSocket.SslConfiguration.EnabledSslProtocols =
                     SslProtocols.Tls | SslProtocols.Tls11 | SslProtocols.Tls12;
+            }
+
+            // The token goes in the handshake's Authorization header, never the URL. websocket-sharp
+            // can only send Basic credentials, so it's the password (the server ignores the user);
+            // preAuth sends it with the first request instead of waiting for a 401 challenge.
+            if (!string.IsNullOrEmpty(m_authToken))
+            {
+                m_webSocket.SetCredentials("unity", m_authToken, true);
             }
 
             m_webSocket.OnOpen += WSConnected;

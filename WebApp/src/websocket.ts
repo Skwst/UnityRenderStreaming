@@ -23,12 +23,29 @@ function getRoomName(request: IncomingMessage): string | null {
 // (guessing/forging is blocked); a missing token is allowed to connect and act as a listener, but
 // any message from that connection that would grant it "sender" status is rejected instead.
 //
-// Browsers can't set custom headers on a WebSocket handshake, so the token travels in the query
-// string here (unlike the HTTP polling routes, which use an Authorization header); this is safe
-// under wss:// (TLS encrypts the whole request line) and the server never logs the WS upgrade
-// URL (it's handled on the raw http.Server, bypassing Express/morgan entirely).
+// The token travels in the handshake's Authorization header, never the URL, so it can't leak
+// through logs, proxies or anything that records request URLs. Only the streamer (Unity) needs a
+// token, and it isn't a browser, so the browser restriction on WebSocket handshake headers
+// doesn't matter here; browser listeners connect without one. Unity's websocket-sharp client can
+// only send Basic credentials (see Dimagogos' TokenWebSocketSignaling), so besides
+// "Bearer <token>" this also accepts "Basic base64(<any user>:<token>)".
 function getToken(request: IncomingMessage): string | null {
-  return new URL(request.url ?? '/', 'http://localhost').searchParams.get('token');
+  const header = request.headers.authorization;
+  if (!header) {
+    return null;
+  }
+  const [scheme, value = ''] = header.split(' ', 2);
+  switch (scheme.toLowerCase()) {
+    case 'bearer':
+      return value;
+    case 'basic': {
+      const decoded = Buffer.from(value, 'base64').toString('utf8');
+      const separator = decoded.indexOf(':');
+      return separator === -1 ? '' : decoded.slice(separator + 1);
+    }
+    default:
+      return '';
+  }
 }
 
 export default class WSSignaling {
